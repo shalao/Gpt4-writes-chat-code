@@ -1,0 +1,145 @@
+import 'package:flutter/material.dart';
+import 'package:chat/widgets/chat_bubble.dart';
+import 'package:chat/database.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await requestPermissions();
+  runApp(ChatApp());
+}
+
+Future<void> requestPermissions() async {
+  if (Platform.isIOS) {
+    await Permission.photos.request();
+  }
+}
+
+class ChatApp extends StatefulWidget {
+  @override
+  _ChatAppState createState() => _ChatAppState();
+}
+
+class _ChatAppState extends State<ChatApp> {
+  final _messageController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: Text('Chat App'),
+        ),
+        body: Column(
+          children: [
+            Expanded(child: _buildMessageList()),
+            _buildMessageInput(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageList() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: DatabaseHelper.instance.queryAllRows(),
+      builder: (BuildContext context, AsyncSnapshot<List<Map<String, dynamic>>> snapshot) {
+        if (snapshot.hasData) {
+          return ListView.builder(
+            itemCount: snapshot.data!.length,
+            itemBuilder: (context, index) {
+              final message = snapshot.data![index][DatabaseHelper.columnMessage];
+              final isUser = snapshot.data![index][DatabaseHelper.columnIsUser] == 1;
+              return ChatBubble(message: message, isUser: isUser);
+            },
+          );
+        } else {
+          return Center(child: CircularProgressIndicator());
+        }
+      },
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8),
+      height: 70,
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: InputDecoration(hintText: 'Type a message'),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.send),
+            onPressed: () {
+              if (_messageController.text.isNotEmpty) {
+                final message = _messageController.text.trim();
+                _sendMessage(message);
+                _messageController.clear();
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _sendMessage(String message) async {
+    final dbHelper = DatabaseHelper.instance;
+    final userMessageCount = await dbHelper.getUserMessageCount() ?? 0;
+
+    if (userMessageCount >= 3) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Subscription Required'),
+          content: Text('You need to subscribe to continue chatting.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    await dbHelper.insert({
+      DatabaseHelper.columnMessage: message,
+      DatabaseHelper.columnIsUser: 1
+    });
+
+    // TODO: Implement the API call here
+    final response = await http.post(
+      Uri.parse('https://chat.leaseshe.com/chat-stream'),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(<String, String>{
+        'message': message,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final responseBody = jsonDecode(response.body);
+      final botResponse = responseBody['response'];
+
+      await dbHelper.insert({
+        DatabaseHelper.columnMessage: botResponse,
+        DatabaseHelper.columnIsUser: 0
+      });
+    } else {
+      // Handle the error here
+    }
+
+    setState(() {});
+  }
+}

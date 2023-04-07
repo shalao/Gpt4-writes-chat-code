@@ -1,0 +1,83 @@
+
+  ### 修改前的代码
+  void _sendMessage(String message) async {
+    final dbHelper = DatabaseHelper.instance;
+
+    final userMessageCount = await dbHelper.getUserMessageCount() ?? 0;
+
+    if (userMessageCount >= 10) {
+      // 在您需要显示对话框的地方
+await _showSubscriptionRequiredDialog(context);
+      return;
+    }
+
+    await dbHelper.insert({
+      DatabaseHelper.columnMessage: message,
+      DatabaseHelper.columnIsUser: 1
+    });
+
+    HttpClient client = HttpClient();
+    Uri url = Uri.parse('https://chat.leaseshe.com/chat-stream');
+    HttpClientRequest request = await client.getUrl(url);
+
+    // Send request and get response.
+    HttpClientResponse response = await request.close();
+
+
+  // Listen to the response stream.
+  response.transform(utf8.decoder).transform(json.decoder).listen((dynamic jsonObject) {
+    // Process jsonObject.
+    if (jsonObject.containsKey('content')) {
+      String content = jsonObject['content'];
+      // Handle content.
+      dbHelper.insert({
+        DatabaseHelper.columnMessage: content,
+        DatabaseHelper.columnIsUser: 0
+      });
+      setState(() {});
+    }
+    if (jsonObject.containsKey('event')) {
+      String event = jsonObject['event'];
+      if (event == 'done') {
+        // Handle stream completion.
+        client.close();
+      }
+    }
+    if (jsonObject.containsKey('tip')) {
+      String tip = jsonObject['tip'];
+      // Handle tip.
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('提示'),
+          content: Text(tip),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }, onError: (error) {
+    // Handle errors.
+  }, onDone: () {
+    // Clean up when the stream is done.
+    client.close();
+  });
+}
+
+### 修改后报错如下：
+Undefined name 'http'.
+Try correcting the name to one that is defined, or defining the name.dartundefined_identifier
+Type: dynamic
+
+The method 'ResponseParser' isn't defined for the type '_ChatAppState'.
+Try correcting the name to the name of an existing method, or defining a method named 'ResponseParser'.dartundefined_method
+
+
+Classes can't be declared inside other classes.
+Try moving the class to the top-level.

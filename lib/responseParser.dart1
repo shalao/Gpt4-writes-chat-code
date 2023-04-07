@@ -1,0 +1,34 @@
+class ResponseParser extends Converter<String, Map<String, dynamic>> {
+  final _parser = JsonParser();
+
+  @override
+  Map<String, dynamic> convert(String input) {
+    final jsonValue = _parser.parse(input);
+    return jsonValue is Map<String, dynamic> ? jsonValue : null;
+  }
+
+  @override
+  Sink<String> startChunkedConversion(Sink<Map<String, dynamic>> sink) {
+    return _JsonSink(sink, _parser);
+  }
+}
+
+class _JsonSink extends ChunkedConversionSink<String> {
+  final ChunkedConversionSink<Map<String, dynamic>> _outputSink;
+  final JsonParser _parser;
+
+  _JsonSink(this._outputSink, this._parser);
+
+  @override
+  void add(String chunk) {
+    final jsonValue = _parser.parse(chunk);
+    if (jsonValue is Map<String, dynamic>) {
+      _outputSink.add(jsonValue);
+    }
+  }
+
+  @override
+  void close() {
+    _outputSink.close();
+  }
+}

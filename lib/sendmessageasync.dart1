@@ -1,0 +1,22 @@
+void _sendMessage(String message) async {
+    final dbHelper = DatabaseHelper.instance;
+
+    final userMessageCount = await dbHelper.getUserMessageCount() ?? 0;
+
+    if (userMessageCount >= 10) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Subscription Required'),
+          content: Text('You need to subscribe to continue chatting.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;

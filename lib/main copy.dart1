@@ -1,0 +1,196 @@
+import 'package:flutter/material.dart';
+import 'package:chat/widgets/chat_bubble.dart';
+import 'package:chat/database.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:http_parser/http_parser.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await requestPermissions();
+  runApp(ChatApp());
+}
+
+Future<void> requestPermissions() async {
+  if (Platform.isIOS) {
+    await Permission.photos.request();
+  }
+}
+
+class ChatApp extends StatefulWidget {
+  @override
+  _ChatAppState createState() => _ChatAppState();
+}
+
+class _ChatAppState extends State<ChatApp> {
+  final _messageController = TextEditingController();
+
+  // ... 其他代码 ...
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          title: Text('Chat App'),
+        ),
+        body: Column(
+          children: [
+            Expanded(child: _buildMessageList()),
+            _buildMessageInput(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageList() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: DatabaseHelper.instance.queryAllRows(),
+      builder: (BuildContext context, AsyncSnapshot<List<Map<String, dynamic>>> snapshot) {
+        if (snapshot.hasData) {
+          return ListView.builder(
+            itemCount: snapshot.data!.length,
+            itemBuilder: (context, index) {
+              final message = snapshot.data![index][DatabaseHelper.columnMessage];
+              final isUser = snapshot.data![index][DatabaseHelper.columnIsUser] == 1;
+              return ChatBubble(message: message, isUser: isUser);
+            },
+          );
+        } else {
+          return Center(child: CircularProgressIndicator());
+        }
+      },
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8),
+      height: 70,
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: InputDecoration(hintText: 'Type a message'),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.send),
+            onPressed: () {
+              if (_messageController.text.isNotEmpty) {
+                final message = _messageController.text.trim();
+                _sendMessage(message);
+                _messageController.clear();
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showSubscriptionRequiredDialog(BuildContext context) async {
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Text('Subscription Required'),
+        content: Text('You need to subscribe to continue chatting.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: Text('OK'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+void _handleResponse(dynamic jsonObject) async {
+  if (jsonObject is Map<String, dynamic>) {
+    if (jsonObject.containsKey('content')) {
+      await _handleContent(jsonObject['content']);
+    }
+    if (jsonObject.containsKey('event')) {
+      _handleEvent(jsonObject['event']);
+    }
+    if (jsonObject.containsKey('tip')) {
+      _handleTip(jsonObject['tip']);
+    }
+  }
+}
+
+
+Future<void> _handleContent(String content) async {
+  // Replace the following line with your database implementation
+  // await dbHelper.insert({
+  //   DatabaseHelper.columnMessage: content,
+  //   DatabaseHelper.columnIsUser: 0
+  // });
+  // setState(() {});
+}
+
+void _handleEvent(String event) {
+  if (event == 'done') {
+    // Handle stream completion
+    // You can close the connection here if needed
+  }
+}
+
+void _handleTip(String tip) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('提示'),
+      content: Text(tip),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _sendMessage(String message) async {
+  // Your code for checking userMessageCount and showing dialog if necessary
+
+  // Your code for inserting user message into the database
+
+  HttpClient client = HttpClient();
+  Uri url = Uri.parse('https://chat.leaseshe.com/chat-stream');
+  HttpClientRequest request = await client.getUrl(url);
+
+  // Send request and get response.
+  HttpClientResponse response = await request.close();
+
+  // Listen to the response stream.
+  response
+      .transform(utf8.decoder)
+      .transform(LineSplitter())
+      .transform(json.decoder)
+      .listen((dynamic jsonObject) {
+        _handleResponse(jsonObject as Map<String, dynamic>);
+      }, onError: (error) {
+        // Handle errors.
+      }, onDone: () {
+        // Clean up when the stream is done.
+        client.close();
+      });
+}
+
+
+
+}
+
